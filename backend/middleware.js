@@ -1,25 +1,36 @@
 const JWT_SECRET = 'AshuJaat';
 const jwt = require('jsonwebtoken');
 
-const authMiddleware = (res,req,next)=>{
+const authMiddleware = (req, res, next) => {
     const authHeader = req.headers.authorization;
 
-    if(!authHeader || !authHeader.startsWith('Bearer ')){
-        return res.status(403).json({})
+    // Check if authorization header is missing or doesn't start with 'Bearer '
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(403).json({
+            message: "Forbidden: No token provided or incorrect format"
+        });
     }
 
-    const token = authHeader.split(' ')[1];
+    const token = authHeader.split(' ')[1]; // Extract the token
 
-    try{
+    try {
+        // Verify token
         const decoded = jwt.verify(token, JWT_SECRET);
-        if(decoded.userId){
-            req.userId = decoded.userId;
-            next();
-        }else{
-            return res.status(403).json({})
+
+        // Check if token contains userId
+        if (decoded.userId) {
+            req.userId = decoded.userId; // Set the userId in request for future use
+            next(); // Call the next middleware or route handler
+        } else {
+            return res.status(403).json({
+                message: "Forbidden: Invalid token payload"
+            });
         }
-    }catch{
-        return res.status(403).json({})
+    } catch (error) {
+        // Handle invalid or expired token
+        return res.status(403).json({
+            message: "Forbidden: Invalid token"
+        });
     }
 };
 

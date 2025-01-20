@@ -8,8 +8,8 @@ const {authMiddleware,JWT_SECRET} = require('../middleware.js')
 
 const signupSchema = zod.object({
     username: zod.string().email(),
-    firstName: zod.string(),
-    lastName: zod.string(),
+    firstname: zod.string(),
+    lastname: zod.string(),
     password: zod.string()
 })
 
@@ -20,12 +20,12 @@ const signinSchema = zod.object({
 
 const updateSchema = zod.object({
     password: zod.string().optional(),
-    firstName: zod.string().optional(),
-    lastName: zod.string().optional()
+    firstname: zod.string().optional(),
+    lastname: zod.string().optional()
 })
 
 
-userRouter.post('/signup',async (res,req)=>{
+userRouter.post('/signup',async (req,res)=>{
 
     //getting user inputs
     const body = req.body;
@@ -33,7 +33,7 @@ userRouter.post('/signup',async (res,req)=>{
     // if entered incorrectly 
     if(!success){
         return res.json({
-            message: "Email already taken / Incorrect inputs"
+            message: "Incorrect inputs"
         })
     }
 
@@ -51,8 +51,8 @@ userRouter.post('/signup',async (res,req)=>{
     // if new user then create a new-user db entry
     const dbUser = await User.create({
         username: body.username,
-        firstName: body.firstName,
-        lastName: body.lastName,
+        firstname: body.firstname,
+        lastname: body.lastname,
         password: body.password
     })
 
@@ -74,84 +74,120 @@ userRouter.post('/signup',async (res,req)=>{
     })
 })
 
-userRouter.post('/signin',async (res, req)=>{
+userRouter.post('/signin', async (req, res) => {
     const body = req.body;
-    const {success} = signinSchema.safeParse(body);
-    // if entered incorrectly
-    if(!success){
-        return res.json({
-            message: "Email already taken / Incorrect inputs"
-        })
+    
+    // Validate inputs using zod (assuming you're using zod for schema validation)
+    const { success } = signinSchema.safeParse(body);
+
+    // If inputs are incorrect
+    if (!success) {
+        return res.status(400).json({
+            message: "Invalid inputs provided"
+        });
     }
 
-    // finding if it is a existing user
-    const user = User.findOne({
-        username: body.username,
-        password: body.password
-    })
+    try {
+        // Finding the user based on the provided username and password (no bcrypt comparison, direct password match)
+        const user = await User.findOne({
+            username: body.username,
+            password: body.password // Directly matching plaintext password (not recommended for production)
+        });
 
-    if(user._id){
-        const token = jwt.sign({
-            userId: user._id
-        }, JWT_SECRET)
+        // If user is not found
+        if (!user) {
+            return res.status(404).json({
+                message: "Invalid username or password"
+            });
+        }
+
+        // Generate a JWT token for the authenticated user
+        const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '1h' });
+
         return res.json({
             message: "User signed-in successfully",
             token: token
-        })
-    }
+        });
 
-    return res.json({
-        message: "Error while logging in"
-    })
-})
+    } catch (error) {
+        return res.status(500).json({
+            message: "Error while logging in",
+            error: error.message
+        });
+    }
+});
+
 
 // user info update route
 
-userRouter.put('/',authMiddleware,async (res, req)=>{
+userRouter.put('/', authMiddleware, async (req, res) => {
     const body = req.body;
-    const {success} = updateSchema.safeParse(body);
-    // if entered incorrectly
-    if(!success){
+
+    // Validate the body using zod (assuming you're using zod for validation)
+    const { success } = updateSchema.safeParse(body);
+
+    // If validation fails
+    if (!success) {
         return res.status(411).json({
             message: "Error while updating information"
-        })
+        });
     }
 
-    await User.updateOne(body,{
-        id: req.userId
-    })
+    try {
+        // Ensure req.userId exists and update user information based on userId
+        const result = await User.updateOne(
+            { _id: req.userId },  // Match by userId from authMiddleware
+            { $set: body }        // Update the fields from body
+        );
 
-    return res.json({
-        message: "Updated successfully"
-    })
-})
+        if (result.nModified === 0) {
+            return res.status(404).json({
+                message: "User not found or no changes made"
+            });
+        }
 
-// searching user in mongodb using their firstname and lastname
+        return res.json({
+            message: "Updated successfully"
+        });
 
-userRouter.get('/bulk',async (res, req)=>{
+    } catch (error) {
+        return res.status(500).json({
+            message: "Error while updating information",
+            error: error.message
+        });
+    }
+});
+
+
+userRouter.get('/bulk', async (req, res) => {
     const filter = req.query.filter || "";
 
-    const users = await User.find({
-        $or: [{
-            firstName: {
-                "$regex": filter
-            }
-        }, {
-            lastName: {
-                "$regex": filter
-            }
-        }]
-    })
+    try {
+        // Searching users with either firstName or lastName matching the filter (case-insensitive)
+        const users = await User.find({
+            $or: [
+                { firstname: { "$regex": filter, "$options": "i" } },  // Case-insensitive search
+                { lastname: { "$regex": filter, "$options": "i" } }
+            ]
+        });
 
-    return res.json({
-        user: users.map(user => ({
-            username: user.username,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            _id: user._id
-        }))
-    })
-})
+        return res.json({
+            users: users.map(user => ({
+                username: user.username,
+                firstName: user.firstname,  // Ensure consistent naming with DB schema
+                lastName: user.lastname,
+                _id: user._id
+            }))
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            message: "Error while fetching users",
+            error: error.message
+        });
+    }
+});
+
 
 module.exports = {
     userRouter

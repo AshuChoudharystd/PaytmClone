@@ -69,4 +69,4 @@ accountRouter.post('/transfer', authMiddleware, async (req, res) => {
     })
 })
 
-module.exports = accountRouter;
+module.exports = {accountRouter};
